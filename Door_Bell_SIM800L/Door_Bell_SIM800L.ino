@@ -13,8 +13,8 @@ const int SIM800_TX = 13;         // D7
 const int SIM800_RX = 15;         // D8
 const int SIGNAL_IN = 12;         // D6
 const int SIGNAL_STATUS_OUT = 14; // D5
-const String PHONE_NO_1 = "+523311565444;";
-const String PHONE_NO_2 = "+523333994426;";
+const String PHONE_NO_1 = "+520000000000;";
+const String PHONE_NO_2 = "+520000000000;";
 
 int signalState = LOW;
 bool buttonPushed = false;

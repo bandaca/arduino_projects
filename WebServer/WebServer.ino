@@ -8,7 +8,10 @@
 
 // Replace with your network credentials
 const char* ssid     = "INFINITUM149C_2.4";
-const char* password = "jE2zCXZS5h";
+const char* password = "*****";
+
+const int SIGNAL_IN = 12;         // D6
+const int SIGNAL_STATUS_OUT = 14; // D5
 
 // Set web server port number to 80
 WiFiServer server(80);
@@ -20,7 +23,7 @@ String header;
 String output2State = "off";
 
 // Assign output variables to GPIO pins
-const int output2 = 2;
+const int output2 = 14;
 
 // Current time
 unsigned long currentTime = millis();
@@ -34,8 +37,8 @@ void setup() {
   // Initialize the output variables as outputs
   pinMode(output2, OUTPUT);
   // Set outputs to LOW
-  //digitalWrite(output2, LOW);
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(output2, LOW);
+  //digitalWrite(LED_BUILTIN, HIGH);
 
   // Connect to Wi-Fi network with SSID and password
   Serial.print("Connecting to ");
@@ -80,15 +83,15 @@ void loop() {
 
             // turns the GPIOs on and off
             if (header.indexOf("GET /2/on") >= 0) {
-              //Serial.println("GPIO 2 on");
-              digitalWrite(LED_BUILTIN, LOW);
+              Serial.println("GPIO 14 on");
+              //digitalWrite(LED_BUILTIN, LOW);
               output2State = "on";
-              //digitalWrite(output2, HIGH);
+              digitalWrite(output2, HIGH);
             } else if (header.indexOf("GET /2/off") >= 0) {
-              //Serial.println("GPIO 2 off");
+              Serial.println("GPIO 14 off");
               output2State = "off";
-              //digitalWrite(output2, LOW);
-              digitalWrite(LED_BUILTIN, HIGH);
+              digitalWrite(output2, LOW);
+              //digitalWrite(LED_BUILTIN, HIGH);
             }
 
             // Display the HTML web page
@@ -106,7 +109,7 @@ void loop() {
             client.println("<body><h1>ESP8266 Web Server</h1>");
 
             // Display current state, and ON/OFF buttons for GPIO 5
-            client.println("<p>GPIO 2 - State " + output2State + "</p>");
+            client.println("<p>GPIO 14 - State " + output2State + "</p>");
             // If the output5State is off, it displays the ON button
             if (output2State == "off") {
               client.println("<p><a href=\"/2/on\"><button class=\"button\">ON</button></a></p>");
