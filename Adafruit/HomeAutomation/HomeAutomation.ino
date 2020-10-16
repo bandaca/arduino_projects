@@ -22,32 +22,22 @@
 /************************* WiFi Access Point *********************************/
 
 #define WLAN_SSID       "INFINITUM149C_2.4"
-#define WLAN_PASS       "*****"
+#define WLAN_PASS       "***"
 
 /************************* Adafruit.io Setup *********************************/
 
 #define AIO_SERVER      "io.adafruit.com"
 #define AIO_SERVERPORT  1883                   // use 8883 for SSL
-#define AIO_USERNAME    "****"
-#define AIO_KEY         "****"
+#define AIO_USERNAME    "***"
+#define AIO_KEY         "***"
 
 
 // Assign output variables to GPIO pins
-const int L1 = 4;
-const int L2 = 5;
-const int L3 = 16;
-const int SW1 = 14;
-const int SW2 = 13;
-const int SW3 = 12;
-String sw1State = "off";
-String sw2State = "off";
-String sw3State = "off";
-int swBtnPushed = 0;
-int btnDown = 0;
-//const int output2 = 14;             // D5
-//const int inputSwitch = 12;         // D6
-//String output2State = "off";
-//bool buttonPushed = false;
+const int LINES[] = {4, 5, 16};  
+const int SWITCH[] = {14, 13, 12};
+String switchStatus[] = {"off", "off", "off"};
+int swBtnPushed = -1;
+int btnDown = -1;
 
 
 /************ Global State (you don't need to change this!) ******************/
@@ -62,10 +52,17 @@ Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO
 
 /****************************** Feeds ***************************************/
 
-//Adafruit_MQTT_Publish sub_sw1 = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "feeds/product-1.sw1");
-Adafruit_MQTT_Subscribe sub_sw1 = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/product-1.sw1");
-Adafruit_MQTT_Subscribe sub_sw2 = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/product-1.sw2");
-Adafruit_MQTT_Subscribe sub_sw3 = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/product-1.sw3");
+Adafruit_MQTT_Subscribe subs[3] = {
+  Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/product-1.sw1"),
+  Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/product-1.sw2"),
+  Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/product-1.sw3")
+};
+
+Adafruit_MQTT_Publish pubs[3] = { 
+  Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/product-1.sw1"),
+  Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/product-1.sw2"),
+  Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/product-1.sw3")
+};
 
 /*************************** Sketch Code ************************************/
 
@@ -74,16 +71,12 @@ Adafruit_MQTT_Subscribe sub_sw3 = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/
 void MQTT_connect();
 
 void setup() {
-  pinMode(L1, OUTPUT);
-  pinMode(L2, OUTPUT);
-  pinMode(L3, OUTPUT);
-  digitalWrite(L1, LOW);
-  digitalWrite(L2, LOW);
-  digitalWrite(L3, LOW);
 
-  pinMode(SW1, INPUT);
-  pinMode(SW2, INPUT);
-  pinMode(SW3, INPUT);
+  for(byte i = 0; i < 3; i = i + 1) {
+    pinMode(LINES[i], OUTPUT);
+    digitalWrite(LINES[i], LOW);
+    pinMode(SWITCH[i], INPUT);
+  }
   
   Serial.begin(115200);
   delay(10);
@@ -106,9 +99,10 @@ void setup() {
   Serial.println("IP address: "); Serial.println(WiFi.localIP());
 
   // Setup MQTT subscription for onoff feed.
-  mqtt.subscribe(&sub_sw1);
-  mqtt.subscribe(&sub_sw2);
-  mqtt.subscribe(&sub_sw3);
+  for(byte i = 0; i < 3; i = i + 1) {
+      mqtt.subscribe(&subs[i]);
+  }
+
 }
 
 uint32_t x=0;
@@ -124,124 +118,10 @@ void loop() {
 
   Adafruit_MQTT_Subscribe *subscription;
   while ((subscription = mqtt.readSubscription(100))) {
-    if(subscription == &sub_sw1) {
-      String value = (char *)sub_sw1.lastread;
-      Serial.print(F("Got: "));
-      Serial.println(value);
-
-      // turns the GPIOs on and off
-      if (value.indexOf("ON")>=0) {
-        Serial.println("SW1 on");
-        sw1State = "on";
-        digitalWrite(L1, HIGH);
-      } else {
-        Serial.println("SW1 off");
-        sw1State = "off";
-        digitalWrite(L1, LOW);
-      }
-    } else if(subscription == &sub_sw2) {
-      String value = (char *)sub_sw2.lastread;
-      if (value.indexOf("ON")>=0) {
-        Serial.println("SW2 on");
-        sw1State = "on";
-        digitalWrite(L2, HIGH);
-      } else {
-        Serial.println("SW2 off");
-        sw1State = "off";
-        digitalWrite(L2, LOW);
-      }
-    } else if(subscription == &sub_sw3) {
-      String value = (char *)sub_sw3.lastread;
-      if (value.indexOf("ON")>=0) {
-        Serial.println("SW3 on");
-        sw1State = "on";
-        digitalWrite(L3, HIGH);
-      } else {
-        Serial.println("SW3 off");
-        sw1State = "off";
-        digitalWrite(L3, LOW);
-      }
-    }
+    handleSubscriptionMessage(subscription);
   }
 
-    if(LOW == digitalRead(SW1)) {
-      btnDown = 1; 
-    } else if(btnDown == 1) {
-      swBtnPushed = 1;
-      btnDown = 0;
-    }
-
-    if(LOW == digitalRead(SW2)) {
-      btnDown = 2; 
-    } else if(btnDown == 2) {
-      swBtnPushed = 2;
-      btnDown = 0;
-    }
-
-    if(LOW == digitalRead(SW3)) {
-      btnDown = 3; 
-    } else if(btnDown == 3) {
-      swBtnPushed = 3;
-      btnDown = 0;
-    }
-
-    if(swBtnPushed > 0) {
-      switch (swBtnPushed) {
-         case 1: {
-          Serial.println("MANUAL SWITCH 1 PUSHED");
-          if(sw1State.indexOf("off") >= 0) {
-            Serial.println("MANUAL SWITCH 1 " + sw1State);
-            sw1State = "on";
-            digitalWrite(L1, HIGH);
-          } else {
-            Serial.println("MANUAL SWITCH 1 " + sw1State);
-            sw1State = "off";
-            digitalWrite(L1, LOW);
-          }
-          break; 
-         }
-         case 2: {
-          if(sw2State.indexOf("off") >= 0) {
-            Serial.println("MANUAL SWITCH 2 " + sw2State);
-            sw2State = "on";
-            digitalWrite(L2, HIGH);
-          } else {
-            Serial.println("MANUAL SWITCH 2 " + sw2State);
-            sw2State = "off";
-            digitalWrite(L2, LOW);
-          }
-          break; 
-         }
-         case 3: {
-          if(sw3State.indexOf("off") >= 0) {
-            Serial.println("MANUAL SWITCH 3 " + sw3State);
-            sw3State = "on";
-            digitalWrite(L3, HIGH);
-          } else {
-            Serial.println("MANUAL SWITCH 3 " + sw3State);
-            sw3State = "off";
-            digitalWrite(L3, LOW);
-          }
-          break;
-         }
-          
-      }
-      swBtnPushed = 0;
-   }
-  
-  // Now we can publish stuff!
-  /*
-   * 
-  Serial.print(F("\nSending photocell val "));
-  Serial.print(x);
-  Serial.print("...");
-  if (! photocell.publish(x++)) {
-    Serial.println(F("Failed"));
-  } else {
-    Serial.println(F("OK!"));
-  }
-  
-  */
+  checkManualSwitch();
 
   
   // ping the server to keep the mqtt connection alive
@@ -251,6 +131,74 @@ void loop() {
     mqtt.disconnect();
   }
   */
+}
+
+void publishValue(char* value, byte index) {
+  if (! pubs[index].publish(value)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+}
+
+void checkManualSwitch() {
+
+  for(byte i = 0; i < 3; i += 1){
+    if(LOW == digitalRead(SWITCH[i])) {
+      btnDown = i; 
+    } else if(btnDown == i) {
+      swBtnPushed = i;
+      btnDown = -1;
+    } 
+  }
+
+
+  if(swBtnPushed >= 0) {
+    for(byte i = 0; i < 3; i += 1) {
+      if(swBtnPushed == i) {
+        Serial.println("MANUAL SWITCH PUSHED");
+        if(switchStatus[i].indexOf("off") >= 0) {
+          switchStatus[i] = "on";
+          digitalWrite(LINES[i], HIGH);
+          publishValue("ON", i);
+        } else {
+          switchStatus[i] = "off";
+          digitalWrite(LINES[i], LOW);
+          publishValue("OFF", i);
+        }
+      }
+    }
+    swBtnPushed = -1;
+  }
+  
+}
+
+void handleSubscriptionMessage(Adafruit_MQTT_Subscribe *subscription) {
+  byte subIndex = -1;
+  for(byte i = 0; i < 3; i += 1) {
+    if(subscription == &subs[i]) {
+      subIndex = i;
+      break;
+    }
+  }
+
+  if(subIndex < 0) return;
+  
+  String value = (char *)subs[subIndex].lastread;
+  Serial.print(F("Got: "));
+  Serial.println(value);
+
+  // turns the GPIOs on and off
+  if (value.indexOf("ON") >= 0) {
+    Serial.println("SW on");
+    switchStatus[subIndex] = "on";
+    digitalWrite(LINES[subIndex], HIGH);
+  } else {
+    Serial.println("SW off");
+    switchStatus[subIndex] = "off";
+    digitalWrite(LINES[subIndex], LOW);
+  }
+  
 }
 
 // Function to connect and reconnect as necessary to the MQTT server.
