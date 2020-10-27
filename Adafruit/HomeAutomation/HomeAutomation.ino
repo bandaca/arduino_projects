@@ -1,36 +1,23 @@
-/***************************************************
-  Adafruit MQTT Library ESP8266 Example
-
-  Must use ESP8266 Arduino from:
-    https://github.com/esp8266/Arduino
-
-  Works great with Adafruit's Huzzah ESP board & Feather
-  ----> https://www.adafruit.com/product/2471
-  ----> https://www.adafruit.com/products/2821
-
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit and open-source hardware by purchasing
-  products from Adafruit!
-
-  Written by Tony DiCola for Adafruit Industries.
-  MIT license, all text above must be included in any redistribution
- ****************************************************/
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 #include "Adafruit_MQTT.h"
 #include "Adafruit_MQTT_Client.h"
 
-/************************* WiFi Access Point *********************************/
-
-#define WLAN_SSID       "INFINITUM149C_2.4"
-#define WLAN_PASS       "***"
 
 /************************* Adafruit.io Setup *********************************/
 
 #define AIO_SERVER      "io.adafruit.com"
 #define AIO_SERVERPORT  1883                   // use 8883 for SSL
-#define AIO_USERNAME    "***"
-#define AIO_KEY         "***"
+#define AIO_USERNAME    "cbandam"
+#define AIO_KEY         ""
 
+
+/************************* WiFi Access Point *********************************/
+
+String WLAN_SSID = "";
+String WLAN_PASS = "";
 
 // Assign output variables to GPIO pins
 const int LINES[] = {4, 5, 16};  
@@ -38,6 +25,17 @@ const int SWITCH[] = {14, 13, 12};
 String switchStatus[] = {"off", "off", "off"};
 int swBtnPushed = -1;
 int btnDown = -1;
+int btnDownCounter = 0;
+
+// Set web server port number to 80
+ESP8266WebServer server(80);
+// Current time
+unsigned long currentTime = millis();
+// Previous time
+unsigned long previousTime = 0;
+// Define timeout time in milliseconds (example: 2000ms = 2s)
+const long timeoutTime = 2000;
+String header;
 
 
 /************ Global State (you don't need to change this!) ******************/
@@ -79,24 +77,9 @@ void setup() {
   }
   
   Serial.begin(115200);
-  delay(10);
+  delay(100);
 
-  Serial.println(F("Adafruit MQTT demo"));
-
-  // Connect to WiFi access point.
-  Serial.println(); Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WLAN_SSID);
-
-  WiFi.begin(WLAN_SSID, WLAN_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
-
-  Serial.println("WiFi connected");
-  Serial.println("IP address: "); Serial.println(WiFi.localIP());
+  ConnectWiFi_STA(WLAN_SSID, WLAN_PASS);
 
   // Setup MQTT subscription for onoff feed.
   for(byte i = 0; i < 3; i = i + 1) {
@@ -123,6 +106,8 @@ void loop() {
 
   checkManualSwitch();
 
+  if (WiFi.getMode() == WIFI_AP) server.handleClient();
+
   
   // ping the server to keep the mqtt connection alive
   // NOT required if you are publishing once every KEEPALIVE seconds
@@ -131,6 +116,146 @@ void loop() {
     mqtt.disconnect();
   }
   */
+}
+
+void handleRoot() {
+  const String content = "<!DOCTYPE html><html>\
+  <head>\
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+    <link rel=\"icon\" href=\"data:,\">\
+    <style>\
+      html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\
+      .button { background-color: #195B6A; border: none; color: white; padding: 16px 40px;}\
+      text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}\
+      .button2 {background-color: #77878A;}\
+     </style>\
+   </head>\
+  <body>\
+    <h1>ESP8266 Web Server</h1>\
+    <form method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"/postform/\">\
+      <div><label>SSID</label><input type='text' name='ssid' id='ssid' value=\"\" /></div>\
+      <div><label>Password</label><input type='password' name='password' id='password' value=\"\"/></div>\
+      <div><input type='submit' id='submit' value=\"submit\"/></div>\
+    </form>\
+  </body>\
+ </html>";
+ 
+  server.send(200, "text/html", content);
+}
+
+void handleForm() {
+  String ssid = "";
+  String password = "";
+  if (server.method() != HTTP_POST) {
+    Serial.println("Method Not Allowed");
+    server.send(405, "text/plain", "Method Not Allowed");
+  } else {
+    String message = "POST form was:\n";
+    for (uint8_t i = 0; i < server.args(); i++) {
+      message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+      if (server.argName(i) == "ssid") ssid = server.arg(i);
+      if (server.argName(i) == "password") password = server.arg(i);
+    }
+    Serial.print("RESPONSE: ");
+    Serial.println(message);
+    server.send(200, "text/plain", message);
+    delay(5000);
+    
+    ConnectWiFi_STA(ssid, password);
+  }
+}
+
+
+
+void ConnectWiFi_STA(String ssid, String password)
+{
+   // Connect to WiFi access point.
+  Serial.print("Connecting WiFi: ");
+  Serial.println(ssid);
+  Serial.println(password);
+
+  WiFi.mode(WIFI_STA);
+  int count = 0;
+  if ( ssid.length() > 0 ) {
+    WiFi.begin(ssid, password);
+  } else {
+    WiFi.begin();
+  }
+  
+  Serial.println();
+  
+  while (WiFi.status() != WL_CONNECTED && count < 50) {
+    delay(500);
+    Serial.print(".");
+    count++;
+  }
+
+  Serial.println();
+  
+  if (WiFi.status() != WL_CONNECTED && ssid.length() > 0) {
+    Serial.println("Unable to connect to the new credentials. Using previous credentials.");
+    Serial.println();
+    WiFi.begin();
+    count=0;
+    while (WiFi.status() != WL_CONNECTED && count < 50) {
+      delay(500);
+      Serial.print(".");
+      count++;
+    }
+  }
+  
+  Serial.println();
+
+  if (WiFi.status()!= WL_CONNECTED) {
+    Serial.print("Unable to connect to WiFi.");
+    ConnectWiFi_AP();
+    return;
+  }
+
+  Serial.println("WiFi connected");
+  Serial.println("IP address: "); Serial.println(WiFi.localIP());
+
+
+   
+}
+
+void ConnectWiFi_AP()
+{ 
+   String ssid = "WifiSwitch-" + String(ESP.getChipId(), HEX);
+   String password = "Admin-123";
+
+   
+   IPAddress local_IP(192,168,250,1);
+   IPAddress gateway(192,168,250,254);
+   IPAddress subnet(255,255,255,0);
+
+
+   Serial.println("Setting soft-AP configuration ... ");
+   Serial.println(WiFi.softAPConfig(local_IP, gateway, subnet) ? "Ready" : "Failed!");
+   
+   Serial.println("");
+   WiFi.mode(WIFI_AP);
+   while(!WiFi.softAP(ssid, password))
+   {
+     Serial.println(".");
+     delay(100);
+   }
+
+   if (MDNS.begin("esp8266")) {
+    Serial.println("MDNS responder started");
+  }
+
+   Serial.println("Starting web server on port 80...");
+   server.on("/", handleRoot);
+   server.on("/postform/", handleForm);
+   server.begin();
+   Serial.println("HTTP server started");
+   
+   Serial.println("");
+   Serial.print("Iniciado AP:\t");
+   Serial.println(ssid);
+   Serial.print("IP address:\t");
+   Serial.println(WiFi.softAPIP());
 }
 
 void publishValue(char* value, byte index) {
@@ -143,12 +268,22 @@ void publishValue(char* value, byte index) {
 
 void checkManualSwitch() {
 
-  for(byte i = 0; i < 3; i += 1){
-    if(LOW == digitalRead(SWITCH[i])) {
-      btnDown = i; 
-    } else if(btnDown == i) {
+  for (byte i = 0; i < 3; i += 1){
+    if (HIGH == digitalRead(SWITCH[i])) {
+      //Serial.println("MANUAL SWITCH DOWN");
+      btnDown = i;
+      if (WiFi.getMode() == WIFI_STA) {
+        btnDownCounter++;
+        if (btnDownCounter >= 50) {
+          btnDownCounter = 0;
+          btnDown = -1;
+          ConnectWiFi_AP();
+        }
+      }      
+    } else if (btnDown == i) {
       swBtnPushed = i;
       btnDown = -1;
+      btnDownCounter = 0;
     } 
   }
 
@@ -204,6 +339,12 @@ void handleSubscriptionMessage(Adafruit_MQTT_Subscribe *subscription) {
 // Function to connect and reconnect as necessary to the MQTT server.
 // Should be called in the loop function and it will take care if connecting.
 void MQTT_connect() {
+
+  if (WiFi.status() != WL_CONNECTED) {
+    //Serial.println("No WiFi Connected...");
+    return;
+  }
+  
   int8_t ret;
 
   // Stop if already connected.
